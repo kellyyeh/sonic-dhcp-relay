@@ -3,7 +3,26 @@
 #include "configInterface.h"
 #include <iostream>
 
+bool dual_tor_sock = false;
+
+static void usage()
+{
+    printf("Usage: ./dhcp6relay {-d}\n");
+    printf("\t-d: enable dual tor option\n");
+}
+
 int main(int argc, char *argv[]) {
+    if (argc > 1) {
+        switch (argv[1][1])
+        {
+            case 'd':
+                dual_tor_sock = true;
+                break;
+            default:
+                fprintf(stderr, "%s: Unknown option\n", basename(argv[0]));
+                usage();
+        }
+    }
     try {
         /*
         unsigned char udp[] = { 
@@ -25,9 +44,8 @@ int main(int argc, char *argv[]) {
         //printf( "   |-Source Address      : %.2X:%.2X:%.2X:%.2X:%.2X:%.2X \n", ether_header->ether_shost[0] , ether_header->ether_shost[1] , ether_header->ether_shost[2] , ether_header->ether_shost[3] , ether_header->ether_shost[4] , ether_header->ether_shost[5] );
         //printf( "   |-Protocol            : %s \n",dst);
         std::vector<relay_config> vlans;
-        swss::DBConnector state_db("STATE_DB", 0);
         initialize_swss(&vlans);
-        loop_relay(&vlans, &state_db);
+        loop_relay(&vlans);
     }
     catch (std::exception &e)
     {
