@@ -12,6 +12,7 @@
 #include <vector>
 #include <event2/util.h>
 #include "dbconnector.h"
+#include "table.h"
 #include "sender.h"
 
 #define PACKED __attribute__ ((packed))
@@ -19,6 +20,7 @@
 #define RELAY_PORT 547
 #define CLIENT_PORT 546
 #define HOP_LIMIT 8     //HOP_LIMIT reduced from 32 to 8 as stated in RFC8415
+#define DHCPv6_OPTION_LIMIT 56      // DHCPv6 option code greater than 56 are currently unassigned
 
 #define lengthof(A) (sizeof (A) / sizeof (A)[0])
 
@@ -41,8 +43,11 @@ typedef enum
     DHCPv6_MESSAGE_TYPE_REPLY = 7,
     DHCPv6_MESSAGE_TYPE_RELEASE = 8,
     DHCPv6_MESSAGE_TYPE_DECLINE = 9,
+    DHCPv6_MESSAGE_TYPE_RECONFIGURE = 10,
+    DHCPv6_MESSAGE_TYPE_INFORMATION_REQUEST = 11,
     DHCPv6_MESSAGE_TYPE_RELAY_FORW = 12,
     DHCPv6_MESSAGE_TYPE_RELAY_REPL = 13,
+    DHCPv6_MESSAGE_TYPE_MALFORMED = 14,
 
     DHCPv6_MESSAGE_TYPE_COUNT
 } dhcp_message_type_t;
@@ -64,7 +69,6 @@ struct relay_config {
 struct database {
     std::shared_ptr<swss::DBConnector> config_db;
     std::shared_ptr<swss::Table> muxTable;
-    std::shared_ptr<swss::Table> counterTable;
 };
 
 
@@ -72,6 +76,7 @@ struct database {
 
 struct dhcpv6_msg {
     uint8_t msg_type;
+    uint8_t xid[3];
 };
 
 struct PACKED dhcpv6_relay_msg {
@@ -100,7 +105,7 @@ struct interface_id_option  {
 };
 
 /**
- * @code                sock_open(const struct sock_fprog *fprog);
+ * @code                sock_open(int ifindex, const struct sock_fprog *fprog);
  *
  * @brief               prepare L2 socket to attach to "udp and port 547" filter 
  *
@@ -245,11 +250,11 @@ void signal_callback(evutil_socket_t fd, short event, void *arg);
 void shutdown();
 
 /**
- * @code                void initialize_counter(std::shared_ptr<swss::Table> state_db, std::string counterVlan);
+ * @code                initialize_counter(std::shared_ptr<swss::DBConnector> state_db, std::string counterVlan);
  *
  * @brief               initialize the counter by each Vlan
  *
- * @param std::shared_ptr<swss::Table> state_db     state_db connector
+ * @param std::shared_ptr<swss::DBConnector> state_db     state_db connector pointer
  * @param counterVlan   counter table with interface name
  * 
  * @return              none
@@ -355,29 +360,30 @@ const struct dhcpv6_relay_msg *parse_dhcpv6_relay(const uint8_t *buffer);
 const struct dhcpv6_option *parse_dhcpv6_opt(const uint8_t *buffer, const uint8_t **out_end);
 
 /**
- * @code                            void process_sent_msg(relay_config *config, uint8_t msg_type);
- *
- * @brief                           process packet after successfully sent udp
- 
- * @param relay_config *config      pointer to relay_config
- * @param uint8_t msg_type          message type of dhcpv6 option of relayed message
- * 
- * @return                          Update counter / syslog
- */
-void process_sent_msg(relay_config *config, uint8_t msg_type);
-
-/**
  * @code                callback(evutil_socket_t fd, short event, void *arg);
- * 
+ *
  * @brief               callback for libevent that is called everytime data is received at the filter socket
  *
  * @param fd            filter socket
- * @param event         libevent triggered event  
+ * @param event         libevent triggered event
  * @param arg           callback argument provided by user
  *
  * @return              none
  */
 void callback(evutil_socket_t fd, short event, void *arg);
+
+/**
+ * @code                callback_dual_tor(evutil_socket_t fd, short event, void *arg);
+ *
+ * @brief               callback for libevent that is called everytime data is received at the filter socket with dual tor option enabled
+ *
+ * @param fd            filter socket
+ * @param event         libevent triggered event
+ * @param arg           callback argument provided by user
+ *
+ * @return              none
+ */
+void callback_dual_tor(evutil_socket_t fd, short event, void *arg);
 
 /**
  * @code                void server_callback(evutil_socket_t fd, short event, void *arg);
@@ -391,3 +397,16 @@ void callback(evutil_socket_t fd, short event, void *arg);
  * @return              none
  */
 void server_callback(evutil_socket_t fd, short event, void *arg);
+
+/**
+ * @code                void server_callback_dual_tor(evutil_socket_t fd, short event, void *arg);
+ * 
+ * @brief               callback for libevent that is called everytime data is received at the server socket
+ *
+ * @param fd            filter socket
+ * @param event         libevent triggered event  
+ * @param arg           callback argument provided by user
+ *
+ * @return              none
+ */
+void server_callback_dual_tor(evutil_socket_t fd, short event, void *arg);

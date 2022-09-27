@@ -19,7 +19,6 @@ struct event_base *base;
 struct event *ev_sigint;
 struct event *ev_sigterm;
 static std::string vlan_member = "VLAN_MEMBER|";
-
 static std::string counter_table = "DHCPv6_COUNTER_TABLE|";
 struct database redis_db;
 
@@ -579,6 +578,7 @@ void relay_relay_forw(int sock, const uint8_t *msg, int32_t len, const ip6_hdr *
 void callback(evutil_socket_t fd, short event, void *arg) {
     struct relay_config *config = (struct relay_config *)arg;
     static uint8_t message_buffer[4096];
+    std::string counterVlan = counter_table;
     int32_t len = recv(config->filter, message_buffer, 4096, 0);
     if (len <= 0) {
         syslog(LOG_WARNING, "recv: Failed to receive data at filter socket: %s\n", strerror(errno));
@@ -614,9 +614,7 @@ void callback(evutil_socket_t fd, short event, void *arg) {
     current_position = tmp;
 
     auto msg = parse_dhcpv6_hdr(current_position);
-    counters[msg->msg_type]++;
-    std::string counterVlan = counter_table;
-    update_counter(config->db, counterVlan.append(config->interface), msg->msg_type);
+    auto option_position = current_position + sizeof(struct dhcpv6_msg);
 
     switch (msg->msg_type) {
         case DHCPv6_MESSAGE_TYPE_RELAY_FORW:
@@ -650,7 +648,7 @@ void callback(evutil_socket_t fd, short event, void *arg) {
         }
         default:
         {
-            relay_client(config->local_sock, current_position, ntohs(udp_header->len) - sizeof(udphdr), ip_header, ether_header, config);
+            syslog(LOG_WARNING, "DHCPv6 client message received was not relayed\n");
             break;
         }
     }
